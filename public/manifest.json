@@ -1,7 +1,7 @@
 {
-  "name": "CloudCLI UI",
-  "short_name": "CloudCLI UI",
-  "description": "CloudCLI UI web application",
+  "name": "PM Dev Stack",
+  "short_name": "PM Dev Stack",
+  "description": "Every Claude Code session in one sidebar, ready to resume",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
