@@ -9,9 +9,11 @@ type ServiceDependencies = Parameters<typeof createTaskmasterService>[0];
 function createDependencies(
   homeDirectory: string,
   files: Record<string, string>,
+  environment: Record<string, string | undefined> = {},
 ): ServiceDependencies {
   return {
     getHomeDirectory: () => homeDirectory,
+    getEnvironment: () => environment,
     readTextFile: async (filePath) => {
       const content = files[filePath];
       if (content === undefined) {
@@ -93,5 +95,33 @@ test('detectMcpServer reports when no readable Claude configuration exists', asy
     hasMCPServer: false,
     reason: 'No Claude configuration file found',
     hasConfig: false,
+  });
+});
+
+test('detectMcpServer reads the Claude configuration from CLAUDE_CONFIG_DIR when it is set', async () => {
+  const homeDirectory = path.join(path.sep, 'fake-home');
+  const claudeConfigDirectory = path.join(path.sep, 'profiles', 'work-claude');
+  const service = createTaskmasterService(createDependencies(homeDirectory, {
+    // A config at the default location must be ignored once the CLI is pointed elsewhere.
+    [path.join(homeDirectory, '.claude.json')]: JSON.stringify({ mcpServers: {} }),
+    [path.join(claudeConfigDirectory, '.claude.json')]: JSON.stringify({
+      mcpServers: {
+        'task-master-ai': { command: 'npx', args: ['-y', 'task-master-ai'] },
+      },
+    }),
+  }, { CLAUDE_CONFIG_DIR: claudeConfigDirectory }));
+
+  assert.deepEqual(await service.detectMcpServer(), {
+    hasMCPServer: true,
+    isConfigured: true,
+    hasApiKeys: false,
+    scope: 'user',
+    config: {
+      command: 'npx',
+      args: ['-y', 'task-master-ai'],
+      url: null,
+      envVars: [],
+      type: 'stdio',
+    },
   });
 });

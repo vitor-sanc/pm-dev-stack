@@ -7,6 +7,12 @@ import test from 'node:test';
 import { ClaudeProviderAuth } from '@/modules/providers/list/claude/claude-auth.provider.js';
 import type { ProviderAuthStatus, ProviderAuthSubscriptionOverride } from '@/shared/types.js';
 
+// These tests point Claude's config location at a fake home directory. A
+// developer's own CLAUDE_CONFIG_DIR would take precedence over that home and
+// send the code under test to their real Claude profile instead. Each test file
+// runs in its own process, so clearing it here only affects this file.
+delete process.env.CLAUDE_CONFIG_DIR;
+
 // checkCredentials() is private, but unlike getStatus() it never shells out to the
 // `claude` CLI — it only reads env vars and ~/.claude files. Calling it directly
 // (TypeScript's `private` has no runtime effect) tests the priority order without

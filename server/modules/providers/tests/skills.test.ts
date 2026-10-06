@@ -6,6 +6,12 @@ import test from 'node:test';
 
 import { providerSkillsService } from '@/modules/providers/services/skills.service.js';
 
+// These tests point Claude's config location at a fake home directory. A
+// developer's own CLAUDE_CONFIG_DIR would take precedence over that home and
+// send the code under test to their real Claude profile instead. Each test file
+// runs in its own process, so clearing it here only affects this file.
+delete process.env.CLAUDE_CONFIG_DIR;
+
 const patchHomeDir = (nextHomeDir: string) => {
   const original = os.homedir;
   (os as any).homedir = () => nextHomeDir;

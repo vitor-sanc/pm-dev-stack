@@ -10,6 +10,7 @@ import { createCommandsRouter } from './commands.routes.js';
 export const commandsRoutes = createCommandsRouter({
   fileSystem: fs,
   homeDirectory: os.homedir,
+  environment: () => process.env,
   appRoot: findApplicationRoot(getModuleDirectory(import.meta.url)),
   models: providerModelsService,
   runtime: {

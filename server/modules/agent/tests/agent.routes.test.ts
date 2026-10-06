@@ -22,6 +22,7 @@ function createDependencies(
     fileSystem: {} as AgentDependencies['fileSystem'],
     crypto: nodeCrypto,
     homeDirectory: () => '/home/test',
+    environment: () => ({}),
     spawnProcess: (() => { throw new Error('spawn should not run'); }) as unknown as
       AgentDependencies['spawnProcess'],
     platformMode: true,

@@ -4,10 +4,13 @@ import path from "path";
 import express from "express";
 
 import { parseFrontMatter } from "../../shared/frontmatter.js";
+import { getClaudeConfigDir } from "../../shared/utils.js";
 
 type CommandsRouterDependencies = {
   fileSystem: typeof import('node:fs/promises');
   homeDirectory(): string;
+  /** The process environment, read for `CLAUDE_CONFIG_DIR` so Claude's own files are found where the CLI keeps them. */
+  environment(): Record<string, string | undefined>;
   appRoot: string;
   models: typeof import('../providers/index.js').providerModelsService;
   runtime: {
@@ -459,9 +462,8 @@ router.post("/list", async (req, res) => {
       allCommands.push(...projectCommands);
     }
 
-    // Scan user-level commands (~/.claude/commands/)
-    const homeDir = os.homedir();
-    const userCommandsDir = path.join(homeDir, ".claude", "commands");
+    // Scan user-level commands (<Claude config dir>/commands/)
+    const userCommandsDir = path.join(getClaudeConfigDir(os.homedir(), dependencies.environment()), "commands");
     const userCommands = await scanCommandsDirectory(
       userCommandsDir,
       userCommandsDir,
@@ -541,7 +543,7 @@ router.post("/execute", async (req, res) => {
     {
       const resolvedPath = path.resolve(commandPath);
       const userBase = path.resolve(
-        path.join(os.homedir(), ".claude", "commands"),
+        path.join(getClaudeConfigDir(os.homedir(), dependencies.environment()), "commands"),
       );
       const projectBase = context?.projectPath
         ? path.resolve(path.join(context.projectPath, ".claude", "commands"))

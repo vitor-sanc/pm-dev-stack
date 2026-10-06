@@ -55,6 +55,7 @@ function createDependencies(queryClaude: RunFunction): AgentDependencies {
     fileSystem: { access: async () => undefined } as unknown as AgentDependencies['fileSystem'],
     crypto: nodeCrypto,
     homeDirectory: () => '/home/test',
+    environment: () => ({}),
     spawnProcess: (() => { throw new Error('spawn should not run'); }) as unknown as AgentDependencies['spawnProcess'],
     platformMode: true,
     users: { getFirstUser: () => ({ id: 1, username: 'test-user' }) },

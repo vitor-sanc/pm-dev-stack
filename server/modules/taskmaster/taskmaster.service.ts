@@ -1,8 +1,12 @@
 import path from 'node:path';
 
+import { getClaudeConfigDir, getClaudeGlobalConfigPath } from '@/shared/utils.js';
+
 type TaskmasterServiceDependencies = {
     readTextFile(filePath: string): Promise<string>;
     getHomeDirectory(): string;
+    /** Read for `CLAUDE_CONFIG_DIR`, which moves Claude Code's config files out of the home directory. */
+    getEnvironment(): Record<string, string | undefined>;
 };
 
 /**
@@ -15,9 +19,10 @@ export function createTaskmasterService(dependencies: TaskmasterServiceDependenc
         /** Detects TaskMaster in the user's Claude MCP configuration without exposing secret values. */
         async detectMcpServer() {
             const homeDirectory = dependencies.getHomeDirectory();
+            const environment = dependencies.getEnvironment();
             const configurationPaths = [
-                path.join(homeDirectory, '.claude.json'),
-                path.join(homeDirectory, '.claude', 'settings.json'),
+                getClaudeGlobalConfigPath(homeDirectory, environment),
+                path.join(getClaudeConfigDir(homeDirectory, environment), 'settings.json'),
             ];
             let configuration: Record<string, unknown> | null = null;
             let configurationPath: string | null = null;

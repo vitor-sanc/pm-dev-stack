@@ -41,6 +41,56 @@ import type {
 export const IS_PLATFORM = process.env.VITE_IS_PLATFORM === 'true';
 
 // ---------------------------
+//----------------- CLAUDE CODE CONFIG LOCATION UTILITIES ------------
+/**
+ * Resolves the directory where the Claude Code CLI keeps its user-level state:
+ * `projects/` (session transcripts), `sessions/` (live-session registry),
+ * `settings.json`, `.credentials.json`, `commands/`, `skills/` and the rest.
+ *
+ * Mirrors the CLI itself: a non-empty `CLAUDE_CONFIG_DIR` wins, otherwise the
+ * directory is `<home>/.claude`. Honoring the variable matters for anyone who
+ * keeps more than one Claude Code profile (a work and a personal account, for
+ * example): without it the UI lists and resumes sessions from a different
+ * profile than the one the CLI is actually writing to. The value is read on
+ * every call, after `load-env` has applied `.env`, so either source works.
+ *
+ * Both inputs are injectable so services that already receive their home
+ * directory and environment as dependencies resolve the location their tests
+ * control instead of the real one. Consumed by the Claude providers, the
+ * session watcher, the CLI liveness registry, Agent routes, commands routes,
+ * the CLI status command, TaskMaster detection and the workspace read-only
+ * roots — everything that reads files the Claude Code CLI writes.
+ */
+export function getClaudeConfigDir(
+  homeDirectory: string = os.homedir(),
+  environment: Record<string, string | undefined> = process.env,
+): string {
+  const configuredDirectory = environment.CLAUDE_CONFIG_DIR?.trim();
+  return configuredDirectory ? path.resolve(configuredDirectory) : path.join(homeDirectory, '.claude');
+}
+
+/**
+ * Resolves Claude Code's global state file, `.claude.json`, which holds
+ * user-scoped MCP servers and per-project settings.
+ *
+ * Its default location differs from the rest of Claude Code's state: it sits
+ * in the home directory itself (`<home>/.claude.json`, next to `.claude/`, not
+ * inside it). When `CLAUDE_CONFIG_DIR` is set, the CLI keeps it inside that
+ * directory instead. Inputs are injectable for the same reason as
+ * `getClaudeConfigDir`. Consumed by the Claude MCP provider and TaskMaster
+ * detection.
+ */
+export function getClaudeGlobalConfigPath(
+  homeDirectory: string = os.homedir(),
+  environment: Record<string, string | undefined> = process.env,
+): string {
+  const configuredDirectory = environment.CLAUDE_CONFIG_DIR?.trim();
+  return configuredDirectory
+    ? path.join(path.resolve(configuredDirectory), '.claude.json')
+    : path.join(homeDirectory, '.claude.json');
+}
+
+// ---------------------------
 //----------------- NORMALIZED MESSAGE HELPER INPUT TYPES ------------
 /**
  * Input payload accepted by `createNormalizedMessage`.
@@ -195,7 +245,7 @@ export const FORBIDDEN_WORKSPACE_PATHS = [
 const READ_ONLY_ROOTS = [...new Set([
   '/tmp',
   os.tmpdir(),
-  path.join(os.homedir(), '.claude', 'projects'),
+  path.join(getClaudeConfigDir(), 'projects'),
 ])];
 
 /**

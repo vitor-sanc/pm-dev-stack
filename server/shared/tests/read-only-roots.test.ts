@@ -21,8 +21,11 @@ await mkdir(outsideDirectory);
 
 const previousHome = process.env.HOME;
 const previousUserProfile = process.env.USERPROFILE;
+const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
 process.env.HOME = fixtureHome;
 process.env.USERPROFILE = fixtureHome;
+// A developer's own CLAUDE_CONFIG_DIR would move the Claude projects root out of the fixture home.
+delete process.env.CLAUDE_CONFIG_DIR;
 
 const { resolvePathUnderRoots, resolveReadOnlyRootPath, validateWorkspacePath } = await import('@/shared/utils.js');
 
@@ -36,6 +39,9 @@ after(async () => {
     delete process.env.USERPROFILE;
   } else {
     process.env.USERPROFILE = previousUserProfile;
+  }
+  if (previousClaudeConfigDir !== undefined) {
+    process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
   }
   await rm(fixtureRoot, { recursive: true, force: true });
 });

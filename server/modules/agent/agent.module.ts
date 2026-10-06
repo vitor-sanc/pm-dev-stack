@@ -33,6 +33,7 @@ export function createAgentModule(externalDependencies: AgentExternalDependencie
     fileSystem: fs,
     crypto,
     homeDirectory: os.homedir,
+    environment: () => process.env,
     spawnProcess: spawn,
     platformMode: IS_PLATFORM,
     users: {
