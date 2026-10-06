@@ -4,7 +4,9 @@
 # This script is sourced from ~/.bashrc on sandbox shell open.
 
 if ! pgrep -f "server/index.js" > /dev/null 2>&1; then
-  nohup cloudcli start --port 3001 > /tmp/cloudcli-ui.log 2>&1 &
+  # Inside the sandbox the server must listen on every interface for
+  # `sbx ports` to reach it; the app itself defaults to loopback only.
+  HOST=0.0.0.0 nohup cloudcli start --port 3001 > /tmp/cloudcli-ui.log 2>&1 &
   disown
 
   echo ""
