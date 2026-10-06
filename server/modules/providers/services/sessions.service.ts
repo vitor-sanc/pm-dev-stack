@@ -748,7 +748,7 @@ export const sessionsService = {
   /**
    * Renames one session by id without requiring the caller to pass provider.
    */
-  renameSessionById(sessionId: string, summary: string): { sessionId: string; summary: string } {
+  async renameSessionById(sessionId: string, summary: string): Promise<{ sessionId: string; summary: string }> {
     const session = sessionsDb.getSessionById(sessionId);
     if (!session) {
       throw new AppError(`Session "${sessionId}" was not found.`, {
@@ -758,6 +758,28 @@ export const sessionsService = {
     }
 
     sessionsDb.updateSessionCustomName(sessionId, summary);
+
+    // The database row is what this UI shows; the provider's own copy is what
+    // its CLI shows (e.g. `claude --resume`). A session that never ran has no
+    // transcript to write to yet. A failed provider write must not undo a rename
+    // the user already sees, so it is logged instead of thrown.
+    const rename = providerRegistry.resolveProvider(session.provider as LLMProvider).rename;
+    if (rename && session.provider_session_id) {
+      try {
+        await rename.renameSession({
+          providerSessionId: session.provider_session_id,
+          projectPath: session.project_path,
+          jsonlPath: session.jsonl_path,
+          title: summary,
+        });
+      } catch (error) {
+        console.warn(
+          `[Sessions] Renamed session ${sessionId} in the app, but could not write the title to its ${session.provider} transcript:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
     return { sessionId, summary };
   },
 };

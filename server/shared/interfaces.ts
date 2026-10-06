@@ -74,6 +74,12 @@ export interface IProvider {
    * its absence is what makes "fork session" unavailable.
    */
   readonly fork?: IProviderFork;
+  /**
+   * Title sync. Present only for providers whose CLI keeps a session title in
+   * its own session artifacts; its absence means a rename stays in this app's
+   * database and the CLI's own session picker keeps showing the old title.
+   */
+  readonly rename?: IProviderRename;
 }
 
 // ---------------------------
@@ -98,6 +104,28 @@ export interface IProviderFork {
     upToAnchorId?: string;
     title?: string;
   }): Promise<{ providerSessionId: string; jsonlPath: string }>;
+}
+
+// ---------------------------
+//----------------- PROVIDER RENAME INTERFACE ------------
+/**
+ * Title-sync contract for one provider. The sessions service calls it after
+ * storing a UI rename, so the provider CLI's own session list (for example
+ * `claude --resume`) shows the same title as the UI.
+ */
+export interface IProviderRename {
+  /**
+   * Records `title` as the provider-native title of one session. Implementations
+   * write through the provider's own tooling, never by guessing its file format.
+   */
+  renameSession(input: {
+    providerSessionId: string;
+    /** The session's working directory — how providers scope a session lookup. */
+    projectPath: string | null;
+    /** The transcript the title is written into, when the app has indexed it. */
+    jsonlPath: string | null;
+    title: string;
+  }): Promise<void>;
 }
 
 // ---------------------------
