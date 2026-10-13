@@ -61,9 +61,11 @@ if ! git merge --no-edit "$UPSTREAM_REF"; then
 fi
 
 # A changed lockfile means dependencies moved; anything else can reuse node_modules.
+# `npm ci` installs exactly what the lockfile pins and never rewrites it, so a
+# different local npm version cannot leave the tree dirty for the next sync.
 if ! git diff --quiet ORIG_HEAD HEAD -- package-lock.json; then
   step "Dependencies changed, installing"
-  npm install --no-audit --no-fund
+  npm ci --no-audit --no-fund
 fi
 
 AFTER_MERGE_HINT="The merge is committed. Fix forward, or undo it with: git reset --hard ORIG_HEAD"
