@@ -1603,3 +1603,123 @@ export type CliApplication = {
 export type SandboxCommandService = {
   execute(argumentsList: string[]): Promise<number>;
 };
+
+// ---------------------------
+
+//----------------- SESSION WORKFLOW ------------
+
+/**
+ * Workflow status of a conversation in the sidebar.
+ *
+ * `active` is the implicit state of every session without a stored row. The
+ * other three are stored in the `session_workflow` table. Consumed by the
+ * Session Workflow module and, later, by the sidebar client.
+ */
+export type SessionWorkflowStatus = 'active' | 'paused' | 'closed' | 'ignored';
+
+/**
+ * One stored `session_workflow` row.
+ *
+ * `active` is never stored: marking a session active deletes its row. The
+ * `statusSetAt` ISO timestamp is the reference point of the reactivation rule:
+ * a paused or closed session with newer activity counts as active again.
+ */
+export type SessionWorkflowRecord = {
+  sessionId: string;
+  status: Exclude<SessionWorkflowStatus, 'active'>;
+  statusSetAt: string;
+};
+
+/**
+ * Result of a status change.
+ *
+ * `statusSetAt` is `null` when the new status is `active`, because that status
+ * has no stored row and therefore no timestamp.
+ */
+export type SessionWorkflowStatusChange = {
+  sessionId: string;
+  status: SessionWorkflowStatus;
+  statusSetAt: string | null;
+};
+
+/**
+ * One non-archived conversation as the grouping rules see it.
+ *
+ * `title` is the custom name, or the session id when no name exists.
+ * `lastActivity` is the row's `updated_at`, else its `created_at` (ISO timestamp).
+ */
+export type VisibleSession = {
+  sessionId: string;
+  provider: string;
+  projectId: string | null;
+  title: string;
+  lastActivity: string | null;
+  forkedFromSessionId: string | null;
+};
+
+/**
+ * Kind of a sidebar group: the Management section, a client prefix group,
+ * or the loose conversations without a prefix.
+ */
+export type SessionGroupKind = 'management' | 'prefix' | 'loose';
+
+/**
+ * A conversation placed in a group, with the display data the sidebar needs.
+ *
+ * `displayTitle` is the title without the group prefix. `titlePrefix` is the
+ * raw prefix as the user typed it, or `null` for loose conversations.
+ * `status` is the effective status after the reactivation rule.
+ * `forkedFromTitle` is `null` when the source session is not visible.
+ */
+export type GroupedSession = {
+  sessionId: string;
+  provider: string;
+  projectId: string | null;
+  title: string;
+  displayTitle: string;
+  titlePrefix: string | null;
+  lastActivity: string | null;
+  status: SessionWorkflowStatus;
+  forkedFromSessionId: string | null;
+  forkedFromTitle: string | null;
+};
+
+/**
+ * One group of conversations, each bucket ordered by newest activity first.
+ *
+ * `pinnedSessions` holds the active or paused `<Client> / Gestão` sessions.
+ * `ignoredSessions` is empty unless the caller asked for ignored sessions.
+ * `clientSlug` stays `null` until a client index resolves the prefix.
+ */
+export type SessionGroup = {
+  key: string;
+  kind: SessionGroupKind;
+  label: string;
+  clientSlug: string | null;
+  pinnedSessions: GroupedSession[];
+  sessions: GroupedSession[];
+  closedSessions: GroupedSession[];
+  ignoredSessions: GroupedSession[];
+};
+
+/**
+ * Complete, unpaged grouping of the non-archived conversations.
+ *
+ * `pendingMarkerCount` counts sessions whose title still carries a legacy
+ * status marker. It stays 0 until the marker migration exists.
+ */
+export type SessionGroupsView = {
+  groups: SessionGroup[];
+  pendingMarkerCount: number;
+};
+
+/**
+ * Application-service surface of the Session Workflow router.
+ *
+ * Route tests supply fakes. Production composition combines the status
+ * storage, the session reader and the grouping rules.
+ */
+export type SessionWorkflowServices = {
+  getSessionGroups(options: { includeIgnored: boolean }): SessionGroupsView;
+  setSessionStatus(sessionId: string, status: SessionWorkflowStatus): Promise<SessionWorkflowStatusChange>;
+};
