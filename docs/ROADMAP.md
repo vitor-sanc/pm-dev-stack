@@ -9,6 +9,10 @@ each client's management view one click away.
 The fork only receives from upstream (`scripts/sync-upstream.sh`); nothing here is sent back. New features live in
 their own modules, and upstream files get only small registration hooks, so syncs conflict in predictable places.
 
+The app runs as a systemd user service (`scripts/install-autostart.sh`) from a separate deploy directory that
+`scripts/deploy.sh` builds from `main`, so building or testing in the checkout never changes the running app. A
+deploy skips the restart while any Shell is live, since a restart would kill it.
+
 ## Configuration
 
 Everything personal stays in the gitignored `.env` (see `.env.example`). Nothing in the repo is specific to one

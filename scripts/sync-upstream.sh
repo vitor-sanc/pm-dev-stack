@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Brings the upstream project's latest changes into this fork, then verifies,
-# rebuilds and redeploys. This fork only receives from upstream; it never sends
+# builds and redeploys (scripts/deploy.sh). This fork only receives from upstream; it never sends
 # changes back.
 #
 #   scripts/sync-upstream.sh            merge, test, build, restart, push
@@ -80,8 +80,8 @@ step "Building"
 npm run build || fail "Build failed. $AFTER_MERGE_HINT"
 
 if systemctl --user cat "$SERVICE_NAME" >/dev/null 2>&1; then
-  step "Restarting $SERVICE_NAME"
-  systemctl --user restart "$SERVICE_NAME"
+  step "Deploying"
+  SERVICE_NAME="$SERVICE_NAME" "$REPO_DIR/scripts/deploy.sh" HEAD || fail "Deploy failed. $AFTER_MERGE_HINT"
 fi
 
 if [[ "$PUSH" == true ]]; then
