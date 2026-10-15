@@ -559,8 +559,10 @@ own, entirely separate, `type`-keyed protocol: `init` (`:314`), `input` (`:561`)
 The parts worth knowing:
 
 - **PTYs outlive their socket too.** `ptySessionsMap` (`:34`) holds them, and a disconnect
-  starts a 30 minute `PTY_SESSION_TIMEOUT` (`:35`) before the process is killed
-  (`:587-617`). A reconnect within that window reattaches.
+  only marks the PTY as detached. A once-a-minute idle sweep (session-workflow module) kills
+  a detached PTY after `SHELL_IDLE_TIMEOUT_HOURS` (default 4) of its claude being idle or
+  waiting, or of no output when the registry has no entry. A reconnect before that
+  reattaches.
 - **Output is buffered per session, capped at 5000 chunks** (`:432-447`), and replayed to a
   returning client (`:361-377`) so a reconnect shows recent terminal output instead of a
   blank screen.

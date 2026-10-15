@@ -1,5 +1,10 @@
 import { sessionsService } from '@/modules/providers/index.js';
-import { broadcastSessionUpserted, broadcastSessionUpsertedBatch } from '@/modules/websocket/index.js';
+import {
+  broadcastSessionUpserted,
+  broadcastSessionUpsertedBatch,
+  killRetainedShellPty,
+  listRetainedShellPtys,
+} from '@/modules/websocket/index.js';
 import {
   applyMarkerMigration,
   findMarkerMigrationItems,
@@ -9,6 +14,12 @@ import {
   listSessionWorkflowRecords,
   setSessionWorkflowStatus,
 } from '@/modules/session-workflow/services/session-status.service.js';
+import {
+  listProcessChildren,
+  readRegistrySignal,
+  readShellIdleTimeoutMs,
+  scheduleShellIdleSweep,
+} from '@/modules/session-workflow/services/shell-idle-policy.service.js';
 import { listVisibleSessions } from '@/modules/session-workflow/services/visible-sessions.service.js';
 import { createSessionWorkflowRouter } from '@/modules/session-workflow/session-workflow.routes.js';
 import type { SessionWorkflowServices } from '@/shared/types.js';
@@ -77,3 +88,20 @@ export const sessionWorkflowRoutes = createSessionWorkflowRouter(createSessionWo
   renameSession: (sessionId, title) => sessionsService.renameSessionById(sessionId, title),
   broadcastSessions: broadcastSessionUpsertedBatch,
 }));
+
+/**
+ * Starts the once-a-minute sweep that ends detached Shell PTYs whose claude
+ * has been idle for `SHELL_IDLE_TIMEOUT_HOURS`. The server entrypoint calls it
+ * when the HTTP server starts listening. Returns the function that stops it.
+ * The timeout is read here, at call time, so the environment file is loaded.
+ */
+export function startShellIdleSweep(): () => void {
+  return scheduleShellIdleSweep({
+    listRetainedShellPtys,
+    killRetainedShellPty,
+    listProcessChildren,
+    readRegistrySignal,
+    now: Date.now,
+    timeoutMs: readShellIdleTimeoutMs(process.env),
+  });
+}

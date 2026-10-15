@@ -5,6 +5,7 @@ import path from 'node:path';
 import pty, { type IPty } from 'node-pty';
 import { WebSocket, type RawData } from 'ws';
 
+import type { RetainedShellPty } from '@/shared/types.js';
 import { parseIncomingJsonObject, stripAnsiSequences } from '@/shared/utils.js';
 
 type ShellIncomingMessage = {
@@ -29,7 +30,12 @@ type PtySessionEntry = {
   pty: IPty;
   ws: WebSocket | null;
   buffer: string[];
-  timeoutId: NodeJS.Timeout | null;
+  // When the last socket left, in epoch ms; null while a socket is attached.
+  // The idle sweep of the session-workflow module reads it through
+  // listRetainedShellPtys to decide when a detached pty may be killed.
+  detachedAt: number | null;
+  // Epoch ms of the latest pty output, with or without a socket attached.
+  lastOutputAt: number;
   projectPath: string;
   sessionId: string | null;
   // The app theme a Claude CLI in this pty was launched for; null for any other
@@ -39,7 +45,6 @@ type PtySessionEntry = {
 };
 
 const ptySessionsMap = new Map<string, PtySessionEntry>();
-const PTY_SESSION_TIMEOUT = 30 * 60 * 1000;
 const SHELL_URL_PARSE_BUFFER_LIMIT = 32768;
 const TRAILING_URL_PUNCTUATION_REGEX = /[)\]}>.,;:!?]+$/;
 
@@ -524,6 +529,45 @@ function prioritizeUserNpmGlobalBin(env: NodeJS.ProcessEnv): { key: string; valu
 }
 
 /**
+ * Used by the session-workflow module's idle sweep (and the management-session
+ * launcher) to see every retained Shell PTY, attached or not.
+ */
+export function listRetainedShellPtys(): RetainedShellPty[] {
+  const retainedPtys: RetainedShellPty[] = [];
+  for (const [key, entry] of ptySessionsMap) {
+    retainedPtys.push({
+      key,
+      pid: entry.pty.pid ?? null,
+      sessionId: entry.sessionId,
+      projectPath: entry.projectPath,
+      attached: entry.ws !== null,
+      detachedAt: entry.detachedAt,
+      lastOutputAt: entry.lastOutputAt,
+    });
+  }
+  return retainedPtys;
+}
+
+/**
+ * Used by the session-workflow module's idle sweep to end a detached PTY.
+ *
+ * The sweep is asynchronous between listing and killing, so the entry is
+ * checked again here: it must still exist, have no socket and carry the same
+ * `detachedAt` the sweep listed. A reconnect, a reconnect followed by a new
+ * disconnect, or a forced restart all leave the PTY alive.
+ */
+export function killRetainedShellPty(key: string, detachedAt: number): boolean {
+  const entry = ptySessionsMap.get(key);
+  if (!entry || entry.ws !== null || entry.detachedAt !== detachedAt) {
+    return false;
+  }
+
+  entry.pty.kill();
+  ptySessionsMap.delete(key);
+  return true;
+}
+
+/**
  * Used by this module's websocket gateway to connect the standalone Shell UI
  * to a retained PTY while keeping process lifecycle ownership on the server.
  */
@@ -576,9 +620,6 @@ export function handleShellConnection(
         if (isLoginCommand || forceRestart) {
           const oldSession = ptySessionsMap.get(ptySessionKey);
           if (oldSession) {
-            if (oldSession.timeoutId) {
-              clearTimeout(oldSession.timeoutId);
-            }
             oldSession.pty.kill();
             ptySessionsMap.delete(ptySessionKey);
           }
@@ -588,10 +629,6 @@ export function handleShellConnection(
           isLoginCommand || forceRestart ? null : ptySessionsMap.get(ptySessionKey);
         if (existingSession) {
           shellProcess = existingSession.pty;
-          if (existingSession.timeoutId) {
-            clearTimeout(existingSession.timeoutId);
-            existingSession.timeoutId = null;
-          }
 
           ws.send(
             JSON.stringify({
@@ -612,6 +649,7 @@ export function handleShellConnection(
           }
 
           existingSession.ws = ws;
+          existingSession.detachedAt = null;
           sendClaudeColorScheme(ws, existingSession.claudeColorScheme);
           return;
         }
@@ -669,7 +707,8 @@ export function handleShellConnection(
           pty: shellProcess,
           ws,
           buffer: [],
-          timeoutId: null,
+          detachedAt: null,
+          lastOutputAt: Date.now(),
           projectPath,
           sessionId,
           claudeColorScheme,
@@ -684,6 +723,8 @@ export function handleShellConnection(
           if (!session) {
             return;
           }
+
+          session.lastOutputAt = Date.now();
 
           if (session.buffer.length < 5000) {
             session.buffer.push(chunk);
@@ -772,10 +813,6 @@ export function handleShellConnection(
             );
           }
 
-          if (session?.timeoutId) {
-            clearTimeout(session.timeoutId);
-          }
-
           ptySessionsMap.delete(ptySessionKey);
           shellProcess = null;
         });
@@ -847,20 +884,10 @@ export function handleShellConnection(
       return;
     }
 
+    // The PTY stays alive. The idle sweep of the session-workflow module kills
+    // it once its claude has been idle for the configured time.
     session.ws = null;
-    if (session.timeoutId) {
-      clearTimeout(session.timeoutId);
-    }
-    session.timeoutId = setTimeout(() => {
-      // A reconnect may win just as this timer becomes runnable. Re-check the
-      // active socket so a queued cleanup can never kill a reattached PTY.
-      if (ptySessionsMap.get(ptySessionKey as string) !== session || session.ws !== null) {
-        return;
-      }
-
-      session.pty.kill();
-      ptySessionsMap.delete(ptySessionKey as string);
-    }, PTY_SESSION_TIMEOUT);
+    session.detachedAt = Date.now();
   });
 
   ws.on('error', (error) => {

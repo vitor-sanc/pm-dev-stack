@@ -9,3 +9,6 @@ export { broadcastSessionUpserted, broadcastSessionUpsertedBatch } from './servi
 // from a timer, with no socket to stream to or report errors on.
 export { runDetachedChatTurn } from './services/chat-websocket.service.js';
 export type { ProviderRuntimeGateway } from './services/chat-websocket.service.js';
+// listRetainedShellPtys, killRetainedShellPty: used by the session-workflow
+// module's idle sweep to find and end Shell PTYs that no socket is attached to.
+export { listRetainedShellPtys, killRetainedShellPty } from './services/shell-websocket.service.js';

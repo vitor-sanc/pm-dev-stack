@@ -172,8 +172,8 @@ stateDiagram-v2
   Running --> Exited: onExit
   Running --> Detached: ws close
 
-  Detached --> Running: reconnect before timeout
-  Detached --> Killed: timeout reached -> pty.kill
+  Detached --> Running: reconnect
+  Detached --> Killed: idle sweep (no socket; idle/waiting, or no output, for N h) -> pty.kill
   Exited --> [*]
   Killed --> [*]
   EmitError --> WaitingInit
@@ -194,7 +194,7 @@ Stores up to 5000 chunks for replay on reconnect.
 6. URL detection:
 Strips ANSI, accumulates text buffer, extracts URLs, emits `auth_url` once per normalized URL, supports `autoOpen`.
 7. Close behavior:
-Socket disconnect does not instantly kill PTY; session is kept alive and terminated on timeout.
+Socket disconnect does not kill the PTY. A detached PTY lives until the idle sweep of the session-workflow module ends it (`SHELL_IDLE_TIMEOUT_HOURS`, default 4).
 
 ## `/plugin-ws/:pluginName` Proxy Flow
 

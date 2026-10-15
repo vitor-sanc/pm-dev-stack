@@ -4,11 +4,15 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 
 import { WebSocket } from 'ws';
 
-import { handleShellConnection } from '@/modules/websocket/services/shell-websocket.service.js';
+import {
+  handleShellConnection,
+  killRetainedShellPty,
+  listRetainedShellPtys,
+} from '@/modules/websocket/services/shell-websocket.service.js';
 
 function createFakeSocket() {
   const socket = new EventEmitter() as EventEmitter & {
@@ -27,6 +31,7 @@ function createFakePty() {
   let exitListener: ((event: { exitCode: number; signal?: number }) => void) | null = null;
 
   return {
+    pid: 4242,
     killed: false,
     onData(listener: (data: string) => void) {
       dataListener = listener;
@@ -745,4 +750,134 @@ test('other shells and initial commands only get the COLORFGBG hint', () => {
       ['0;15', '0;15', '0;15', '15;0']
     );
   });
+});
+
+function attachIdleTestShell(sessionId: string) {
+  const pty = createFakePty();
+  const dependencies = {
+    resolveProviderSessionId: () => null,
+    spawnPty: () => pty as never,
+  };
+  const initMessage = JSON.stringify({
+    type: 'init',
+    projectPath: process.cwd(),
+    sessionId,
+    hasSession: false,
+    provider: 'plain-shell',
+    isPlainShell: true,
+    initialCommand: 'test-command',
+  });
+  const attach = () => {
+    const socket = createFakeSocket();
+    handleShellConnection(socket as never, dependencies);
+    socket.emit('message', initMessage);
+    return socket;
+  };
+  const retained = () => listRetainedShellPtys().filter((entry) => entry.sessionId === sessionId);
+  return { pty, attach, retained };
+}
+
+test('a closed socket leaves the pty listed as detached and a reattach clears it', () => {
+  const { pty, attach, retained } = attachIdleTestShell(`retained-detach-${Date.now()}`);
+
+  const firstSocket = attach();
+  assert.equal(retained().length, 1);
+  assert.equal(retained()[0].attached, true);
+  assert.equal(retained()[0].detachedAt, null);
+  assert.equal(retained()[0].pid, 4242);
+
+  const before = Date.now();
+  firstSocket.emit('close');
+  const [detachedEntry] = retained();
+  assert.equal(detachedEntry.attached, false);
+  assert.equal(typeof detachedEntry.detachedAt, 'number');
+  assert.ok((detachedEntry.detachedAt as number) >= before);
+  assert.equal(detachedEntry.pid, 4242);
+
+  attach();
+  const [reattachedEntry] = retained();
+  assert.equal(reattachedEntry.attached, true);
+  assert.equal(reattachedEntry.detachedAt, null);
+
+  pty.emitExit();
+  assert.deepEqual(retained(), []);
+});
+
+test('pty output updates lastOutputAt also while no socket is attached', () => {
+  mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  try {
+    const { pty, attach, retained } = attachIdleTestShell(`retained-output-${Date.now()}`);
+
+    const socket = attach();
+    assert.equal(retained()[0].lastOutputAt, 1_000_000);
+
+    socket.emit('close');
+    mock.timers.tick(5_000);
+    pty.emitData('output while detached');
+
+    assert.equal(retained()[0].lastOutputAt, 1_005_000);
+    pty.emitExit();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('a detached pty is no longer killed by a fixed 30 minute timer', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  try {
+    const { pty, attach, retained } = attachIdleTestShell(`retained-no-timer-${Date.now()}`);
+
+    attach().emit('close');
+    mock.timers.tick(31 * 60 * 1000);
+
+    assert.equal(pty.killed, false);
+    assert.equal(retained().length, 1);
+    pty.emitExit();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('killRetainedShellPty kills and removes a detached pty that matches the listed detachedAt', () => {
+  const { pty, attach, retained } = attachIdleTestShell(`retained-kill-${Date.now()}`);
+
+  attach().emit('close');
+  const [detachedEntry] = retained();
+
+  assert.equal(killRetainedShellPty(detachedEntry.key, detachedEntry.detachedAt as number), true);
+  assert.equal(pty.killed, true);
+  assert.deepEqual(retained(), []);
+
+  // The exit event that follows a kill finds no entry and must not throw.
+  pty.emitExit();
+});
+
+test('killRetainedShellPty leaves an attached pty or a re-detached one alone', () => {
+  mock.timers.enable({ apis: ['Date'], now: 2_000_000 });
+  try {
+    const { pty, attach, retained } = attachIdleTestShell(`retained-keep-${Date.now()}`);
+
+    const firstSocket = attach();
+    const [attachedEntry] = retained();
+    assert.equal(killRetainedShellPty(attachedEntry.key, 2_000_000), false);
+    assert.equal(killRetainedShellPty(attachedEntry.key, 0), false);
+
+    firstSocket.emit('close');
+    const listedDetachedAt = retained()[0].detachedAt as number;
+
+    // The sweep listed the pty before the user reconnected and left again.
+    mock.timers.tick(1_000);
+    attach().emit('close');
+    assert.notEqual(retained()[0].detachedAt, listedDetachedAt);
+    assert.equal(killRetainedShellPty(attachedEntry.key, listedDetachedAt), false);
+    assert.equal(pty.killed, false);
+    assert.equal(retained().length, 1);
+    pty.emitExit();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('killRetainedShellPty answers false for an unknown key', () => {
+  assert.equal(killRetainedShellPty('no-such-project_no-such-session', 1), false);
 });

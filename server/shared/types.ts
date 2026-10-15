@@ -1759,3 +1759,23 @@ export type SessionWorkflowServices = {
   previewMarkerMigration(): MarkerMigrationPreview;
   applyMarkerMigration(sessionIds: string[]): Promise<MarkerMigrationResult>;
 };
+
+/**
+ * Snapshot of one retained Shell PTY, as the websocket module lists it.
+ *
+ * `detachedAt` is the epoch milliseconds when the last socket left, and is
+ * `null` while a socket is attached (`attached` is then `true`). `lastOutputAt`
+ * is the epoch milliseconds of the latest PTY output. `pid` is the PTY's own
+ * process id (the shell), or `null` when the platform gives none. The session
+ * workflow idle sweep and the management-session launcher read it; the
+ * websocket module is the only producer.
+ */
+export type RetainedShellPty = {
+  key: string;
+  pid: number | null;
+  sessionId: string | null;
+  projectPath: string;
+  attached: boolean;
+  detachedAt: number | null;
+  lastOutputAt: number;
+};

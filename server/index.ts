@@ -51,7 +51,7 @@ import browserUseRoutes from './modules/browser-use/browser-use.routes.js';
 import { assetsRoutes } from './modules/assets/index.js';
 import { fileTreeRoutes } from './modules/file-tree/index.js';
 import { worktreesRoutes } from './modules/worktrees/index.js';
-import { initializeSessionWorkflowTable, sessionWorkflowRoutes } from './modules/session-workflow/index.js';
+import { initializeSessionWorkflowTable, sessionWorkflowRoutes, startShellIdleSweep } from './modules/session-workflow/index.js';
 import browserUseMcpRoutes from './modules/browser-use/browser-use-mcp.routes.js';
 import { browserUseService } from './modules/browser-use/browser-use.service.js';
 import { initializeDatabase, sessionsDb } from './modules/database/index.js';
@@ -378,6 +378,8 @@ async function startServer() {
             // Sends anything that came due while the server was not running,
             // then keeps polling.
             initializeScheduledMessageDispatcher(providerRuntimeService);
+            // Ends detached Shell PTYs whose claude has been idle for a long time.
+            startShellIdleSweep();
 
             // Start server-side plugin processes for enabled plugins
             startEnabledPluginServers().catch(err => {
