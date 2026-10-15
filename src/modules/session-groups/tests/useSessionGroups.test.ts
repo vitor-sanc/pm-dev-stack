@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { beforeEach, test, vi } from 'vitest';
 
 import type { ServerEvent, SessionGroupsView } from '@/shared/types';
@@ -253,6 +254,25 @@ test('setStatus sends the change and the echoed broadcast plus the explicit refe
 
   assert.deepEqual(setStatusRequest.mock.calls, [['session-1', 'paused']]);
   assert.equal(groupsRequest.mock.calls.length, 2);
+});
+
+test('under StrictMode a status change still refetches', async () => {
+  // StrictMode mounts, unmounts and remounts every component in development, which is how the app runs under `npm run dev`.
+  respondWithView('Acme');
+  const { result } = renderHook(() => useSessionGroups(false, null), { wrapper: StrictMode });
+  await waitFor(() => {
+    assert.ok(result.current.view);
+  });
+  await waitForDebounceWindow();
+  const requestsAfterMount = groupsRequest.mock.calls.length;
+  setStatusRequest.mockResolvedValue(envelopeResponse({ sessionId: 'session-1', status: 'paused', statusSetAt: null }));
+
+  await act(async () => {
+    await result.current.setStatus('session-1', 'paused');
+  });
+  await waitForDebounceWindow();
+
+  assert.equal(groupsRequest.mock.calls.length, requestsAfterMount + 1);
 });
 
 test('setStatus rejects with the server message and keeps the view on a 404', async () => {

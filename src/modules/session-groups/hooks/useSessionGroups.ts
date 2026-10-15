@@ -97,16 +97,17 @@ export function useSessionGroups(includeIgnored: boolean, openSessionTitle: stri
   }, [openSessionTitle, scheduleRefetch]);
 
   // A response that lands after unmount must not be applied, and a pending timer must not fire.
-  useEffect(
-    () => () => {
+  // The flag is reset on mount because StrictMode unmounts and remounts once in development.
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
       isUnmountedRef.current = true;
       requestSequenceRef.current += 1;
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-    },
-    [],
-  );
+    };
+  }, []);
 
   const setStatus = useCallback(
     async (sessionId: string, status: SessionWorkflowStatus) => {
