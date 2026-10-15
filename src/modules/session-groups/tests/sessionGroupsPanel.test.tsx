@@ -17,6 +17,7 @@ const groupsRequest = vi.fn();
 const setStatusRequest = vi.fn();
 const markerMigrationPreviewRequest = vi.fn();
 const applyMarkerMigrationRequest = vi.fn();
+const forkRequest = vi.fn();
 
 vi.mock('@/shared/api', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -27,6 +28,7 @@ vi.mock('@/shared/api', async (importOriginal) => ({
       markerMigrationPreview: () => markerMigrationPreviewRequest(),
       applyMarkerMigration: (sessionIds: string[]) => applyMarkerMigrationRequest(sessionIds),
     },
+    forkSession: (sessionId: string, body: { title?: string }) => forkRequest(sessionId, body),
   },
 }));
 
@@ -36,6 +38,10 @@ const WEBSOCKET = {
 
 vi.mock('@/shared/context/WebSocketContext', () => ({
   useWebSocket: () => WEBSOCKET,
+}));
+
+vi.mock('@/shared/hooks/useProviderCapabilities', () => ({
+  useSessionForkingProviders: () => new Set(['claude']),
 }));
 
 const COLLAPSED_STORAGE_KEY = 'pmDevStack.sessionGroups.collapsed';
@@ -158,6 +164,7 @@ beforeEach(() => {
   localStorage.clear();
   groupsRequest.mockReset();
   setStatusRequest.mockReset();
+  forkRequest.mockReset();
   markerMigrationPreviewRequest.mockReset();
   applyMarkerMigrationRequest.mockReset();
   groupsRequest.mockImplementation(async (includeIgnored: boolean) =>
@@ -439,4 +446,66 @@ test('applying the migration refreshes the groups and the entry goes away at zer
   await waitFor(() => {
     assert.equal(screen.queryByRole('button', { name: /^Limpar marcadores \(/ }) === null, true);
   });
+});
+
+test('a row of a provider that can fork has a Branch button and one that cannot has none', async () => {
+  groupsRequest.mockResolvedValue(envelopeResponse({
+    ...baseView,
+    groups: [buildGroup('prefix:acme', 'Acme', {
+      sessions: [buildSession('Acme / Claude'), buildSession('Acme / Outro', { provider: 'cursor' })],
+    })],
+  }));
+  await renderPanel();
+
+  assert.equal(within(rowOf('Acme / Claude')).queryByRole('button', { name: 'Branch' }) === null, false);
+  assert.equal(within(rowOf('Acme / Outro')).queryByRole('button', { name: 'Branch' }) === null, true);
+});
+
+test('Branch opens the modal for that session and does not select the row', async () => {
+  const onConversationSelect = vi.fn();
+  await renderPanel({ onConversationSelect });
+
+  fireEvent.click(within(rowOf('Acme / Relatórios')).getByRole('button', { name: 'Branch' }));
+
+  assert.ok(screen.getByPlaceholderText('Pra que serve?'));
+  assert.equal(onConversationSelect.mock.calls.length, 0);
+});
+
+test('Branch on a management session names the branch inside the Gestão section', async () => {
+  await renderPanel();
+
+  fireEvent.click(within(rowOf('Gestão / Projetos')).getByRole('button', { name: 'Branch' }));
+  fireEvent.change(screen.getByPlaceholderText('Pra que serve?'), { target: { value: 'Tema' } });
+
+  assert.ok(screen.getByText('Gestão / Tema'));
+});
+
+test('a created branch is forked with its name and opened through the panel', async () => {
+  const onConversationSelect = vi.fn();
+  forkRequest.mockResolvedValue(envelopeResponse({ sessionId: 'fork-1', provider: 'claude', sessionName: 'Acme / Tema' }));
+  await renderPanel({ onConversationSelect });
+
+  fireEvent.click(within(rowOf('Acme / Relatórios')).getByRole('button', { name: 'Branch' }));
+  fireEvent.change(screen.getByPlaceholderText('Pra que serve?'), { target: { value: '  Tema  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Criar e abrir' }));
+
+  await waitFor(() => {
+    assert.equal(onConversationSelect.mock.calls.length, 1);
+  });
+  assert.deepEqual(forkRequest.mock.calls[0], ['session-Acme / Relatórios', { title: 'Acme / Tema' }]);
+  assert.deepEqual(onConversationSelect.mock.calls[0], ['project-acme', 'fork-1', 'claude']);
+});
+
+test('a branched row shows its origin on a second line of the title', async () => {
+  groupsRequest.mockResolvedValue(envelopeResponse({
+    ...baseView,
+    groups: [buildGroup('prefix:acme', 'Acme', {
+      sessions: [buildSession('Acme / Fork', { forkedFromSessionId: 'session-origin', forkedFromTitle: 'Acme / Origem' })],
+    })],
+  }));
+  await renderPanel();
+
+  const title = screen.getByTitle(/^Acme \/ Fork/).getAttribute('title') ?? '';
+
+  assert.deepEqual(title.split('\n'), ['Acme / Fork', 'Branch de: Acme / Origem']);
 });

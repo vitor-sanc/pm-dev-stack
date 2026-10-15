@@ -1,4 +1,4 @@
-import { Pin } from 'lucide-react';
+import { GitBranch, Pin } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { cn } from '@/shared/utils';
@@ -11,11 +11,17 @@ type SessionGroupRowProps = {
   isSelected: boolean;
   onSelect: (projectId: string | null, sessionId: string, provider: string) => void;
   onStatusChange: (sessionId: string, status: SessionWorkflowStatus) => void;
+  onBranch?: () => void;
   t: TFunction;
 };
 
-/** Used by SessionGroupSection for one conversation line: its title without the group prefix, and its status menu. */
-export default function SessionGroupRow({ session, isPinned, isSelected, onSelect, onStatusChange, t }: SessionGroupRowProps) {
+/** Used by SessionGroupSection for one conversation line: its title without the group prefix, its Branch button and its status menu. */
+export default function SessionGroupRow({ session, isPinned, isSelected, onSelect, onStatusChange, onBranch, t }: SessionGroupRowProps) {
+  const originLine = session.forkedFromTitle === null
+    ? ''
+    : `\n${t('sessionGroups.branch.origin', 'Branch de')}: ${session.forkedFromTitle}`;
+  const branchLabel = t('sessionGroups.branch.action', 'Branch');
+
   return (
     <div
       data-testid="session-group-row"
@@ -31,7 +37,7 @@ export default function SessionGroupRow({ session, isPinned, isSelected, onSelec
     >
       <button
         type="button"
-        title={session.title}
+        title={`${session.title}${originLine}`}
         onClick={() => onSelect(session.projectId, session.sessionId, session.provider)}
         className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"
       >
@@ -39,7 +45,18 @@ export default function SessionGroupRow({ session, isPinned, isSelected, onSelec
         <span className="truncate text-[13px] font-normal leading-4 text-foreground">{session.displayTitle}</span>
       </button>
 
-      <div className="flex-shrink-0 pr-1 md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
+      <div className="flex flex-shrink-0 items-center pr-1 md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
+        {onBranch && (
+          <button
+            type="button"
+            aria-label={branchLabel}
+            title={branchLabel}
+            onClick={onBranch}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <GitBranch className="h-3.5 w-3.5" />
+          </button>
+        )}
         <SessionStatusMenu
           currentStatus={session.status}
           onStatusSelect={(status) => onStatusChange(session.sessionId, status)}

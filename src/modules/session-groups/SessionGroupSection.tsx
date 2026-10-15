@@ -13,6 +13,8 @@ type SessionGroupSectionProps = {
   onToggleCollapsed: () => void;
   onSelect: (projectId: string | null, sessionId: string, provider: string) => void;
   onStatusChange: (sessionId: string, status: SessionWorkflowStatus) => void;
+  canBranch: (provider: string) => boolean;
+  onBranch: (session: GroupedSession) => void;
   t: TFunction;
 };
 
@@ -39,6 +41,8 @@ export default function SessionGroupSection({
   onToggleCollapsed,
   onSelect,
   onStatusChange,
+  canBranch,
+  onBranch,
   t,
 }: SessionGroupSectionProps) {
   // The closed block starts folded: finished work should not compete with live work for attention.
@@ -53,6 +57,7 @@ export default function SessionGroupSection({
       isSelected={session.sessionId === selectedSessionId}
       onSelect={onSelect}
       onStatusChange={onStatusChange}
+      onBranch={canBranch(session.provider) ? () => onBranch(session) : undefined}
       t={t}
     />
   );

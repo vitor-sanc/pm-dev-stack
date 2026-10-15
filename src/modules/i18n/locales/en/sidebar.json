@@ -210,6 +210,16 @@
       "applied": "Aplicadas",
       "failed": "Não aplicadas",
       "applyFailed": "Não foi possível aplicar"
+    },
+    "branch": {
+      "action": "Branch",
+      "title": "Nova branch",
+      "question": "Pra que serve?",
+      "namePreview": "Nome da sessão",
+      "create": "Criar e abrir",
+      "cancel": "Cancelar",
+      "failed": "Não foi possível criar a branch",
+      "origin": "Branch de"
     }
   }
 }

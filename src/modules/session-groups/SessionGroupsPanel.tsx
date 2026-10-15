@@ -3,8 +3,17 @@ import { Users } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { Button } from '@/shared/ui';
-import type { ProjectSession, SessionGroup, SessionWorkflowStatus } from '@/shared/types';
+import { useSessionForkingProviders } from '@/shared/hooks/useProviderCapabilities';
+import type {
+  GroupedSession,
+  LLMProvider,
+  ProjectSession,
+  SessionGroup,
+  SessionGroupKind,
+  SessionWorkflowStatus,
+} from '@/shared/types';
 import SessionGroupSection from '@/modules/session-groups/SessionGroupSection';
+import BranchSessionModal from '@/modules/session-groups/modals/BranchSessionModal';
 import MarkerMigrationModal from '@/modules/session-groups/modals/MarkerMigrationModal';
 import { useSessionGroups } from '@/modules/session-groups/hooks/useSessionGroups';
 
@@ -104,6 +113,9 @@ export default function SessionGroupsPanel({
   const [statusChangeError, setStatusChangeError] = useState<string | null>(null);
   // Whether the one-time marker migration dialog is open; it loads its own preview on open.
   const [isMarkerMigrationOpen, setIsMarkerMigrationOpen] = useState(false);
+  // The session being branched and the kind of its group (the title rule depends on it); null when no Branch dialog is open.
+  const [branchSource, setBranchSource] = useState<{ session: GroupedSession; groupKind: SessionGroupKind } | null>(null);
+  const forkableProviders = useSessionForkingProviders();
   const { view, isLoading, error, refetch, setStatus } = useSessionGroups(includeIgnored, selectedSession?.summary ?? null);
 
   const toggleGroupCollapsed = (groupKey: string) => {
@@ -190,9 +202,21 @@ export default function SessionGroupsPanel({
           onToggleCollapsed={() => toggleGroupCollapsed(group.key)}
           onSelect={onConversationSelect}
           onStatusChange={changeSessionStatus}
+          canBranch={(provider) => forkableProviders.has(provider as LLMProvider)}
+          onBranch={(session) => setBranchSource({ session, groupKind: group.kind })}
           t={t}
         />
       ))}
+
+      {branchSource && (
+        <BranchSessionModal
+          session={branchSource.session}
+          groupKind={branchSource.groupKind}
+          onClose={() => setBranchSource(null)}
+          onForked={onConversationSelect}
+          t={t}
+        />
+      )}
 
       <MarkerMigrationModal
         isOpen={isMarkerMigrationOpen}
