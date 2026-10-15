@@ -1,3 +1,4 @@
+import { findMarkerMigrationItems } from '@/modules/session-workflow/services/marker-migration.service.js';
 import { resolveEffectiveSessionStatus } from '@/modules/session-workflow/services/session-status.service.js';
 import type {
   GroupedSession,
@@ -183,7 +184,7 @@ export function buildSessionGroupsView(input: BuildSessionGroupsInput): SessionG
     groups.push(looseGroup);
   }
 
-  return { groups, pendingMarkerCount: 0 };
+  return { groups, pendingMarkerCount: findMarkerMigrationItems(input.sessions, input.statuses).length };
 }
 
 /**

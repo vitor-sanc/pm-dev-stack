@@ -1705,8 +1705,9 @@ export type SessionGroup = {
 /**
  * Complete, unpaged grouping of the non-archived conversations.
  *
- * `pendingMarkerCount` counts sessions whose title still carries a legacy
- * status marker. It stays 0 until the marker migration exists.
+ * `pendingMarkerCount` counts the visible sessions whose title still has
+ * something to migrate: a legacy status marker to remove or to store as a
+ * status. It does not depend on `includeIgnored`.
  */
 export type SessionGroupsView = {
   groups: SessionGroup[];
@@ -1714,12 +1715,47 @@ export type SessionGroupsView = {
 };
 
 /**
+ * One session the marker migration would change.
+ *
+ * `currentTitle` is the stored title. `cleanTitle` is the title without the
+ * markers, or `null` when nothing is left (the title is then kept and only the
+ * status changes). `proposedStatus` is `ignored` when the title has an
+ * `<ignore>` marker, `closed` when it only has a check mark.
+ */
+export type MarkerMigrationItem = {
+  sessionId: string;
+  provider: string;
+  currentTitle: string;
+  cleanTitle: string | null;
+  proposedStatus: 'closed' | 'ignored';
+};
+
+/** Dry-run answer of the marker migration: everything an apply would change, newest session first. */
+export type MarkerMigrationPreview = {
+  items: MarkerMigrationItem[];
+};
+
+/**
+ * Outcome of applying the marker migration.
+ *
+ * `applied` lists the migrated session ids. `failed` lists the items that stay
+ * pending, each with the reason. A confirmed id that was no longer pending is in neither list.
+ */
+export type MarkerMigrationResult = {
+  applied: string[];
+  failed: Array<{ sessionId: string; message: string }>;
+};
+
+/**
  * Application-service surface of the Session Workflow router.
  *
  * Route tests supply fakes. Production composition combines the status
  * storage, the session reader and the grouping rules.
+ * `applyMarkerMigration` takes the ids the user saw in the preview and applies only those still pending.
  */
 export type SessionWorkflowServices = {
   getSessionGroups(options: { includeIgnored: boolean }): SessionGroupsView;
   setSessionStatus(sessionId: string, status: SessionWorkflowStatus): Promise<SessionWorkflowStatusChange>;
+  previewMarkerMigration(): MarkerMigrationPreview;
+  applyMarkerMigration(sessionIds: string[]): Promise<MarkerMigrationResult>;
 };

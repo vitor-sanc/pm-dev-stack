@@ -14,6 +14,19 @@ function readSessionId(paramValue: unknown): string {
   return paramValue;
 }
 
+function readSessionIds(bodyValue: unknown): string[] {
+  const sessionIds = (bodyValue as { sessionIds?: unknown } | null | undefined)?.sessionIds;
+  const isListOfSessionIds = Array.isArray(sessionIds)
+    && sessionIds.every((sessionId) => typeof sessionId === 'string' && sessionId.trim() !== '');
+  if (!isListOfSessionIds) {
+    throw new AppError('sessionIds must be a list of session ids', {
+      code: 'INVALID_REQUEST_BODY',
+      statusCode: 400,
+    });
+  }
+  return sessionIds;
+}
+
 function readIncludeIgnored(queryValue: unknown): boolean {
   return queryValue === '1' || queryValue === 'true';
 }
@@ -48,6 +61,21 @@ export function createSessionWorkflowRouter(services: SessionWorkflowServices): 
 
       const change = await services.setSessionStatus(readSessionId(req.params.sessionId), body.status);
       res.json(createApiSuccessResponse(change));
+    }),
+  );
+
+  router.get(
+    '/marker-migration',
+    asyncHandler(async (_req, res) => {
+      res.json(createApiSuccessResponse(services.previewMarkerMigration()));
+    }),
+  );
+
+  router.post(
+    '/marker-migration',
+    asyncHandler(async (req, res) => {
+      const result = await services.applyMarkerMigration(readSessionIds(req.body));
+      res.json(createApiSuccessResponse(result));
     }),
   );
 

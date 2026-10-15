@@ -1,4 +1,9 @@
-import { broadcastSessionUpserted } from '@/modules/websocket/index.js';
+import { sessionsService } from '@/modules/providers/index.js';
+import { broadcastSessionUpserted, broadcastSessionUpsertedBatch } from '@/modules/websocket/index.js';
+import {
+  applyMarkerMigration,
+  findMarkerMigrationItems,
+} from '@/modules/session-workflow/services/marker-migration.service.js';
 import { buildSessionGroupsView } from '@/modules/session-workflow/services/session-grouping.service.js';
 import {
   listSessionWorkflowRecords,
@@ -13,6 +18,8 @@ type SessionWorkflowCompositionDependencies = {
   broadcastSessionUpserted(sessionId: string): Promise<void>;
   now(): Date;
   resolveClientSlug(prefix: string): string | null;
+  renameSession(sessionId: string, title: string): Promise<unknown>;
+  broadcastSessions(sessionIds: string[]): Promise<void>;
 };
 
 /**
@@ -44,6 +51,17 @@ export function createSessionWorkflowServices(
       }
       return change;
     },
+    previewMarkerMigration: () => ({
+      items: findMarkerMigrationItems(listVisibleSessions(), listSessionWorkflowRecords()),
+    }),
+    applyMarkerMigration: (sessionIds) => applyMarkerMigration(sessionIds, {
+      listVisibleSessions,
+      listStatuses: listSessionWorkflowRecords,
+      renameSession: dependencies.renameSession,
+      setStatus: setSessionWorkflowStatus,
+      broadcastSessions: dependencies.broadcastSessions,
+      now: dependencies.now,
+    }),
   };
 }
 
@@ -56,4 +74,6 @@ export const sessionWorkflowRoutes = createSessionWorkflowRouter(createSessionWo
   broadcastSessionUpserted,
   now: () => new Date(),
   resolveClientSlug: () => null,
+  renameSession: (sessionId, title) => sessionsService.renameSessionById(sessionId, title),
+  broadcastSessions: broadcastSessionUpsertedBatch,
 }));

@@ -27,6 +27,12 @@ function createFakeServices(overrides: Partial<SessionWorkflowServices> = {}): S
     setSessionStatus: async () => {
       throw new Error('Unexpected setSessionStatus call');
     },
+    previewMarkerMigration: () => {
+      throw new Error('Unexpected previewMarkerMigration call');
+    },
+    applyMarkerMigration: async () => {
+      throw new Error('Unexpected applyMarkerMigration call');
+    },
     ...overrides,
   };
 }
@@ -172,4 +178,96 @@ test('status route passes through a missing-session error from the service', asy
     assert.equal(response.status, 404);
     assert.equal(payload.error, 'SESSION_NOT_FOUND');
   });
+});
+
+function postMarkerMigration(baseUrl: string, body: unknown): Promise<globalThis.Response> {
+  return fetch(`${baseUrl}/api/session-workflow/marker-migration`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+test('marker migration preview route returns the preview inside the success envelope', async () => {
+  const preview = {
+    items: [{
+      sessionId: 'one',
+      provider: 'claude',
+      currentTitle: '✅ Acme / Tema',
+      cleanTitle: 'Acme / Tema',
+      proposedStatus: 'closed' as const,
+    }],
+  };
+  const services = createFakeServices({ previewMarkerMigration: () => preview });
+
+  await withSessionWorkflowServer(services, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/session-workflow/marker-migration`);
+    const payload = await response.json() as { success: boolean; data: typeof preview };
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.success, true);
+    assert.deepEqual(payload.data, preview);
+  });
+});
+
+test('marker migration apply route passes the confirmed ids to the service', async () => {
+  const receivedIds: string[][] = [];
+  const services = createFakeServices({
+    applyMarkerMigration: async (sessionIds) => {
+      receivedIds.push(sessionIds);
+      return { applied: sessionIds, failed: [] };
+    },
+  });
+
+  await withSessionWorkflowServer(services, async (baseUrl) => {
+    const response = await postMarkerMigration(baseUrl, { sessionIds: ['one', 'two'] });
+    const payload = await response.json() as { success: boolean; data: { applied: string[] } };
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.success, true);
+    assert.deepEqual(payload.data.applied, ['one', 'two']);
+  });
+
+  assert.deepEqual(receivedIds, [['one', 'two']]);
+});
+
+test('marker migration apply route accepts an empty id list', async () => {
+  const receivedIds: string[][] = [];
+  const services = createFakeServices({
+    applyMarkerMigration: async (sessionIds) => {
+      receivedIds.push(sessionIds);
+      return { applied: [], failed: [] };
+    },
+  });
+
+  await withSessionWorkflowServer(services, async (baseUrl) => {
+    const response = await postMarkerMigration(baseUrl, { sessionIds: [] });
+
+    assert.equal(response.status, 200);
+  });
+
+  assert.deepEqual(receivedIds, [[]]);
+});
+
+test('marker migration apply route rejects a body without a list of non-empty strings before calling the service', async () => {
+  let serviceCalled = false;
+  const services = createFakeServices({
+    applyMarkerMigration: async () => {
+      serviceCalled = true;
+      return { applied: [], failed: [] };
+    },
+  });
+
+  await withSessionWorkflowServer(services, async (baseUrl) => {
+    const invalidBodies: unknown[] = [{}, { sessionIds: 'one' }, { sessionIds: ['one', 2] }, { sessionIds: ['one', ' '] }, { sessionIds: null }];
+    for (const body of invalidBodies) {
+      const response = await postMarkerMigration(baseUrl, body);
+      const payload = await response.json() as { error: string };
+
+      assert.equal(response.status, 400, `body ${JSON.stringify(body)} must be rejected`);
+      assert.equal(payload.error, 'INVALID_REQUEST_BODY');
+    }
+  });
+
+  assert.equal(serviceCalled, false);
 });

@@ -13,6 +13,10 @@ const NOW = new Date('2026-10-10T12:00:00.000Z');
 async function withComposedServices(
   broadcast: (sessionId: string) => Promise<void>,
   runTest: (services: ReturnType<typeof createSessionWorkflowServices>, projectDirectory: string) => Promise<void>,
+  markerMigrationFakes: {
+    renameSession?: (sessionId: string, title: string) => Promise<unknown>;
+    broadcastSessions?: (sessionIds: string[]) => Promise<void>;
+  } = {},
 ): Promise<void> {
   const previousDatabasePath = process.env.DATABASE_PATH;
   const tempDirectory = await mkdtemp(path.join(tmpdir(), 'session-workflow-module-'));
@@ -27,6 +31,8 @@ async function withComposedServices(
       broadcastSessionUpserted: broadcast,
       now: () => NOW,
       resolveClientSlug: () => null,
+      renameSession: markerMigrationFakes.renameSession ?? (async () => undefined),
+      broadcastSessions: markerMigrationFakes.broadcastSessions ?? (async () => undefined),
     });
     await runTest(services, tempDirectory);
   } finally {
@@ -90,5 +96,43 @@ test('the groups view applies stored statuses and the reactivation rule', async 
     assert.ok(acme, 'the Acme group must exist');
     assert.deepEqual(acme.sessions.map((session) => session.sessionId), ['woken']);
     assert.deepEqual(acme.closedSessions.map((session) => session.sessionId), ['shut']);
+  });
+});
+
+test('a title with a marker is counted as pending and listed in the preview', async () => {
+  await withComposedServices(async () => undefined, async (services, projectDirectory) => {
+    sessionsDb.createSession('marked', 'claude', projectDirectory, '✅ Acme / Tema', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
+    sessionsDb.createSession('plain', 'claude', projectDirectory, 'Acme / Outro', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
+
+    const view = services.getSessionGroups({ includeIgnored: false });
+    const preview = services.previewMarkerMigration();
+
+    assert.equal(view.pendingMarkerCount, 1);
+    assert.deepEqual(preview.items.map((item) => item.sessionId), ['marked']);
+  });
+});
+
+test('applying the marker migration renames, stores the status, announces the ids and does not reactivate the session', async () => {
+  const announced: string[][] = [];
+  const renameAndStore = async (sessionId: string, title: string) => {
+    sessionsDb.updateSessionCustomName(sessionId, title);
+  };
+
+  await withComposedServices(async () => undefined, async (services, projectDirectory) => {
+    sessionsDb.createSession('marked', 'claude', projectDirectory, '✅ Acme / Tema', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
+
+    const result = await services.applyMarkerMigration(['marked']);
+    const view = services.getSessionGroups({ includeIgnored: false });
+
+    assert.deepEqual(result, { applied: ['marked'], failed: [] });
+    assert.deepEqual(announced, [['marked']]);
+    assert.equal(view.pendingMarkerCount, 0);
+    const acme = view.groups.find((group) => group.key === 'prefix:acme');
+    assert.ok(acme, 'the Acme group must exist');
+    assert.deepEqual(acme.sessions, []);
+    assert.deepEqual(acme.closedSessions.map((session) => session.title), ['Acme / Tema']);
+  }, {
+    renameSession: renameAndStore,
+    broadcastSessions: async (sessionIds) => { announced.push(sessionIds); },
   });
 });

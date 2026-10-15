@@ -15,6 +15,8 @@ import SessionGroupsPanel from '@/modules/session-groups/SessionGroupsPanel';
 
 const groupsRequest = vi.fn();
 const setStatusRequest = vi.fn();
+const markerMigrationPreviewRequest = vi.fn();
+const applyMarkerMigrationRequest = vi.fn();
 
 vi.mock('@/shared/api', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -22,6 +24,8 @@ vi.mock('@/shared/api', async (importOriginal) => ({
     sessionWorkflow: {
       groups: (includeIgnored: boolean) => groupsRequest(includeIgnored),
       setStatus: (sessionId: string, status: string) => setStatusRequest(sessionId, status),
+      markerMigrationPreview: () => markerMigrationPreviewRequest(),
+      applyMarkerMigration: (sessionIds: string[]) => applyMarkerMigrationRequest(sessionIds),
     },
   },
 }));
@@ -154,6 +158,8 @@ beforeEach(() => {
   localStorage.clear();
   groupsRequest.mockReset();
   setStatusRequest.mockReset();
+  markerMigrationPreviewRequest.mockReset();
+  applyMarkerMigrationRequest.mockReset();
   groupsRequest.mockImplementation(async (includeIgnored: boolean) =>
     envelopeResponse(includeIgnored ? viewWithIgnored : baseView),
   );
@@ -383,4 +389,54 @@ test('a title with an empty remainder is shown whole', async () => {
   await renderPanel();
 
   assert.ok(screen.getByText('Acme /'));
+});
+
+test('the marker migration entry is absent when no title has a marker', async () => {
+  await renderPanel();
+
+  assert.equal(screen.queryByRole('button', { name: /^Limpar marcadores/ }) === null, true);
+});
+
+test('the marker migration entry shows the pending count and opens the preview', async () => {
+  groupsRequest.mockResolvedValue(envelopeResponse({ ...baseView, pendingMarkerCount: 2 }));
+  markerMigrationPreviewRequest.mockResolvedValue(envelopeResponse({ items: [] }));
+  await renderPanel();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Limpar marcadores (2)' }));
+
+  await screen.findByText('Nenhum título com marcador');
+  assert.equal(markerMigrationPreviewRequest.mock.calls.length, 1);
+  assert.equal(applyMarkerMigrationRequest.mock.calls.length, 0);
+});
+
+test('the marker migration entry stays while a search filter is active', async () => {
+  groupsRequest.mockResolvedValue(envelopeResponse({ ...baseView, pendingMarkerCount: 1 }));
+  await renderPanel({ searchFilter: 'globex' });
+
+  assert.ok(screen.getByRole('button', { name: 'Limpar marcadores (1)' }));
+});
+
+test('applying the migration refreshes the groups and the entry goes away at zero', async () => {
+  groupsRequest.mockResolvedValueOnce(envelopeResponse({ ...baseView, pendingMarkerCount: 1 }));
+  markerMigrationPreviewRequest.mockResolvedValue(envelopeResponse({
+    items: [{
+      sessionId: 'session-one',
+      provider: 'claude',
+      currentTitle: '✅ Acme / Tema',
+      cleanTitle: 'Acme / Tema',
+      proposedStatus: 'closed',
+    }],
+  }));
+  applyMarkerMigrationRequest.mockResolvedValue(envelopeResponse({ applied: ['session-one'], failed: [] }));
+  await renderPanel();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Limpar marcadores (1)' }));
+  await screen.findByText('✅ Acme / Tema');
+  fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }));
+
+  await screen.findByText('Aplicadas: 1');
+  assert.deepEqual(applyMarkerMigrationRequest.mock.calls, [[['session-one']]]);
+  await waitFor(() => {
+    assert.equal(screen.queryByRole('button', { name: /^Limpar marcadores \(/ }) === null, true);
+  });
 });

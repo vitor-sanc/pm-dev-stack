@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next';
 import { Button } from '@/shared/ui';
 import type { ProjectSession, SessionGroup, SessionWorkflowStatus } from '@/shared/types';
 import SessionGroupSection from '@/modules/session-groups/SessionGroupSection';
+import MarkerMigrationModal from '@/modules/session-groups/modals/MarkerMigrationModal';
 import { useSessionGroups } from '@/modules/session-groups/hooks/useSessionGroups';
 
 const COLLAPSED_GROUPS_STORAGE_KEY = 'pmDevStack.sessionGroups.collapsed';
@@ -101,6 +102,8 @@ export default function SessionGroupsPanel({
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<string[]>(readCollapsedGroupKeys);
   // Message of the last refused status change, shown above the list until the next attempt.
   const [statusChangeError, setStatusChangeError] = useState<string | null>(null);
+  // Whether the one-time marker migration dialog is open; it loads its own preview on open.
+  const [isMarkerMigrationOpen, setIsMarkerMigrationOpen] = useState(false);
   const { view, isLoading, error, refetch, setStatus } = useSessionGroups(includeIgnored, selectedSession?.summary ?? null);
 
   const toggleGroupCollapsed = (groupKey: string) => {
@@ -142,7 +145,18 @@ export default function SessionGroupsPanel({
 
   return (
     <div className="space-y-2 px-1" data-testid="session-groups-list">
-      <div className="flex justify-end px-1">
+      <div className="flex items-center justify-between px-1">
+        {view.pendingMarkerCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setIsMarkerMigrationOpen(true)}
+            className="text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {`${t('sessionGroups.migration.entry', 'Limpar marcadores')} (${view.pendingMarkerCount})`}
+          </button>
+        ) : (
+          <span />
+        )}
         <button
           type="button"
           onClick={() => setIncludeIgnored((isIncluded) => !isIncluded)}
@@ -179,6 +193,13 @@ export default function SessionGroupsPanel({
           t={t}
         />
       ))}
+
+      <MarkerMigrationModal
+        isOpen={isMarkerMigrationOpen}
+        onClose={() => setIsMarkerMigrationOpen(false)}
+        onApplied={refetch}
+        t={t}
+      />
     </div>
   );
 }

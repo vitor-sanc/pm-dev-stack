@@ -195,6 +195,21 @@
     "loadFailed": "Não foi possível carregar as sessões",
     "retry": "Tentar de novo",
     "refreshFailed": "Lista possivelmente desatualizada",
-    "statusChangeFailed": "Não foi possível mudar o status"
+    "statusChangeFailed": "Não foi possível mudar o status",
+    "migration": {
+      "entry": "Limpar marcadores",
+      "title": "Limpar marcadores dos títulos",
+      "description": "O marcador sai do título e vira status. Nada muda até você aplicar.",
+      "loading": "Carregando prévia…",
+      "loadFailed": "Não foi possível carregar a prévia",
+      "empty": "Nenhum título com marcador",
+      "titleKept": "(título mantido)",
+      "apply": "Aplicar",
+      "cancel": "Cancelar",
+      "close": "Fechar",
+      "applied": "Aplicadas",
+      "failed": "Não aplicadas",
+      "applyFailed": "Não foi possível aplicar"
+    }
   }
 }

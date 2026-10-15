@@ -603,6 +603,8 @@ export const api = {
     groups: (includeIgnored: boolean) => get(`/api/session-workflow/groups${query({ includeIgnored })}`),
     setStatus: (sessionId: string, status: SessionWorkflowStatus) =>
       put(`/api/session-workflow/sessions/${encodeURIComponent(sessionId)}/status`, { status }),
+    markerMigrationPreview: () => get('/api/session-workflow/marker-migration'),
+    applyMarkerMigration: (sessionIds: string[]) => post('/api/session-workflow/marker-migration', { sessionIds }),
   },
 };
 

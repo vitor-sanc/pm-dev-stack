@@ -290,3 +290,18 @@ test('findClientManagementSessions finds nothing when no prefix resolves to the 
 
   assert.deepEqual(findClientManagementSessions(sessions, 'acme', () => null), []);
 });
+
+test('pendingMarkerCount counts titles with a marker, also for ignored sessions hidden by the filter', () => {
+  const sessions = [
+    createSession('closed-marker', '✅ Acme / A', '2026-10-01T10:00:00.000Z'),
+    createSession('ignored-marker', 'Acme / B <ignore>', '2026-10-01T09:00:00.000Z'),
+    createSession('plain', 'Acme / C', '2026-10-01T08:00:00.000Z'),
+  ];
+  const statuses = createStatuses([['ignored-marker', 'ignored']]);
+
+  const hiddenView = buildView(sessions, { statuses, includeIgnored: false });
+  const shownView = buildView(sessions, { statuses, includeIgnored: true });
+
+  assert.equal(hiddenView.pendingMarkerCount, 2);
+  assert.equal(shownView.pendingMarkerCount, 2);
+});
