@@ -3,6 +3,7 @@ import {
   getStoredAuthToken,
   storeAuthToken,
 } from '@/shared/authToken';
+import type { SessionWorkflowStatus } from '@/shared/types';
 import { IS_PLATFORM } from '@/shared/utils';
 import { readVoiceConfig, voiceConfigHeaders } from '@/shared/voiceConfig';
 
@@ -596,6 +597,12 @@ export const api = {
 
   system: {
     update: () => post('/api/system/update'),
+  },
+
+  sessionWorkflow: {
+    groups: (includeIgnored: boolean) => get(`/api/session-workflow/groups${query({ includeIgnored })}`),
+    setStatus: (sessionId: string, status: SessionWorkflowStatus) =>
+      put(`/api/session-workflow/sessions/${encodeURIComponent(sessionId)}/status`, { status }),
   },
 };
 

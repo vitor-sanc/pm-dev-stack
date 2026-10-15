@@ -130,6 +130,7 @@
     "restartRequired": "Update installed — restart the server to apply"
   },
   "search": {
+    "modeClients": "Clientes",
     "modeProjects": "Projects",
     "modeConversations": "Conversations",
     "modeMore": "More",
@@ -176,5 +177,24 @@
     "archiveSessions_other": "Archive {{count}} sessions",
     "archiveSessionsNotice_one": "Archive keeps the session out of the active list while preserving its history.",
     "archiveSessionsNotice_other": "Archive keeps the sessions out of the active list while preserving their history."
+  },
+  "sessionGroups": {
+    "deadlines": "📅 Próximos prazos",
+    "deadlinesSoon": "Disponível no M4",
+    "closed": "Encerradas",
+    "ignored": "Ignoradas",
+    "showIgnored": "Mostrar ignoradas",
+    "hideIgnored": "Ocultar ignoradas",
+    "statusMenu": "Status",
+    "status": {
+      "active": "Ativa",
+      "paused": "Pausada",
+      "closed": "Encerrada",
+      "ignored": "Ignorada"
+    },
+    "loadFailed": "Não foi possível carregar as sessões",
+    "retry": "Tentar de novo",
+    "refreshFailed": "Lista possivelmente desatualizada",
+    "statusChangeFailed": "Não foi possível mudar o status"
   }
 }

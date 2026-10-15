@@ -1557,8 +1557,8 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 /** The ordering applied to the project list, either alphabetically by name or by most recent activity, persisted alongside the user's appearance settings. */
 export type ProjectSortOrder = 'name' | 'date';
 
-/** Which list the sidebar is currently showing: projects, conversation search results, running sessions or archived items. */
-export type SidebarSearchMode = 'projects' | 'conversations' | 'running' | 'archived';
+/** Which list the sidebar is currently showing: client session groups, projects, conversation search results, running sessions or archived items. */
+export type SidebarSearchMode = 'clients' | 'projects' | 'conversations' | 'running' | 'archived';
 
 /** A Project narrowed to the archived state so archived entries can be listed and restored without being mistaken for active projects. */
 export type ArchivedProjectListItem = Project & { isArchived: true };
@@ -1844,3 +1844,54 @@ type TaskStatus =
 
 /** A TaskMaster task's priority; high, medium and low are the known values and the string fallback tolerates anything else TaskMaster emits. */
 type TaskPriority = 'high' | 'medium' | 'low' | string;
+
+
+// ---------------------------
+
+//----------------- SESSION WORKFLOW ------------
+
+/** Workflow status of a conversation: `active` is the default, the other three are set by the user from the Clients tab and decide where the row is shown. */
+export type SessionWorkflowStatus = 'active' | 'paused' | 'closed' | 'ignored';
+
+/** Kind of a Clients tab group: the Management section, a client prefix group, or the loose conversations without a prefix. */
+export type SessionGroupKind = 'management' | 'prefix' | 'loose';
+
+/**
+ * A conversation as the server's grouping endpoint places it. `displayTitle` is the title without the group
+ * prefix (the whole title when nothing remains); `status` is the effective status; `projectId` is null when the
+ * server could not resolve the owning project; `forkedFromTitle` is null when the source session is not visible.
+ */
+export type GroupedSession = {
+  sessionId: string;
+  provider: string;
+  projectId: string | null;
+  title: string;
+  displayTitle: string;
+  titlePrefix: string | null;
+  lastActivity: string | null;
+  status: SessionWorkflowStatus;
+  forkedFromSessionId: string | null;
+  forkedFromTitle: string | null;
+};
+
+/**
+ * One group of the Clients tab, every bucket already ordered by the server. `pinnedSessions` holds the
+ * `<Client> / Gestão` sessions, `closedSessions` the finished ones, and `ignoredSessions` is empty unless the
+ * request asked for ignored sessions. Render the buckets as they come; the client never reorders them.
+ */
+export type SessionGroup = {
+  key: string;
+  kind: SessionGroupKind;
+  label: string;
+  clientSlug: string | null;
+  pinnedSessions: GroupedSession[];
+  sessions: GroupedSession[];
+  closedSessions: GroupedSession[];
+  ignoredSessions: GroupedSession[];
+};
+
+/** The Clients tab payload: the groups in display order, and how many titles still carry a legacy marker. */
+export type SessionGroupsView = {
+  groups: SessionGroup[];
+  pendingMarkerCount: number;
+};

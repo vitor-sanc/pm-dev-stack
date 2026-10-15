@@ -1037,9 +1037,8 @@ export function useProjectsState({
       clearSessionAttention(session.id);
       setSelectedSession(session);
 
-      if (activeTab === 'tasks' || activeTab === 'browser') {
-        setActiveTab('chat');
-      }
+      // Fork: opening an existing session opens its Shell, whatever tab was open.
+      setActiveTab('shell');
 
       if (isMobile) {
         // Sessions are tagged with the owning project's DB `projectId` when
@@ -1056,7 +1055,7 @@ export function useProjectsState({
 
       navigate(`/session/${session.id}`);
     },
-    [activeTab, clearSessionAttention, isMobile, navigate, selectedProject?.projectId],
+    [clearSessionAttention, isMobile, navigate, selectedProject?.projectId],
   );
 
   const handleNewSession = useCallback(
