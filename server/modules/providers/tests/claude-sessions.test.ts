@@ -2151,6 +2151,97 @@ test('synchronizeFile does NOT treat "Untitled Claude Session" in DB as a real c
   }
 });
 
+/**
+ * Runs `runTest` against a fake Claude home and an isolated database, with one
+ * transcript for `test-session-1` holding `lines` after the usual head.
+ */
+async function withRenamedTranscript(
+  label: string,
+  lines: string[],
+  runTest: (context: { workspacePath: string; transcriptPath: string }) => Promise<void>,
+): Promise<void> {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), `claude-sync-${label}-`));
+  const workspacePath = path.join(tmp, 'workspace');
+  await mkdir(workspacePath, { recursive: true });
+  const restoreHomeDir = patchHomeDir(tmp);
+
+  try {
+    const claudeHome = path.join(tmp, '.claude');
+    await mkdir(path.join(claudeHome, 'projects'), { recursive: true });
+    await writeFile(path.join(claudeHome, 'history.jsonl'), '', 'utf8');
+    const transcriptPath = await writeSessionJsonl(workspacePath, 'test-session-1.jsonl', lines);
+
+    await withIsolatedDatabase(() => runTest({ workspacePath, transcriptPath }));
+  } finally {
+    restoreHomeDir();
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
+
+const customTitleLine = (title: string) =>
+  JSON.stringify({ type: 'custom-title', customTitle: title, sessionId: 'test-session-1' });
+
+test('synchronizeFile takes a /rename made after the session was indexed over the stored name', { concurrency: false }, async () => {
+  await withRenamedTranscript('cli-rename', [
+    customTitleLine('Old name'),
+    JSON.stringify({ type: 'ai-title', aiTitle: 'AI title', sessionId: 'test-session-1' }),
+    customTitleLine('Client / Management'),
+  ], async ({ workspacePath, transcriptPath }) => {
+    sessionsDb.createSession('test-session-1', 'claude', workspacePath, 'Old name');
+
+    const result = await new ClaudeSessionSynchronizer().synchronizeFile(transcriptPath);
+
+    assert.equal(sessionsDb.getSessionById(result!)?.custom_name, 'Client / Management');
+  });
+});
+
+test('synchronizeFile takes a /rename into a session the app created', { concurrency: false }, async () => {
+  await withRenamedTranscript('app-row-rename', [
+    customTitleLine('Renamed in the terminal'),
+  ], async ({ workspacePath, transcriptPath }) => {
+    sessionsDb.createAppSession('app-session-1', 'claude', workspacePath, 'Name from the first message');
+    sessionsDb.assignProviderSessionId('app-session-1', 'test-session-1');
+
+    const result = await new ClaudeSessionSynchronizer().synchronizeFile(transcriptPath);
+
+    assert.equal(result, 'app-session-1');
+    assert.equal(sessionsDb.getSessionById('app-session-1')?.custom_name, 'Renamed in the terminal');
+  });
+});
+
+test('synchronizeFile reads a rename only from the end of the transcript and otherwise keeps the stored name', { concurrency: false }, async () => {
+  // Claude Code appends the current custom-title again as the session goes on, so a rename
+  // that is still in effect is always near the end; one buried this deep was superseded.
+  const longTurn = JSON.stringify({
+    type: 'user',
+    message: { role: 'user', content: 'x'.repeat(80 * 1024) },
+    sessionId: 'test-session-1',
+  });
+  await withRenamedTranscript('far-rename', [
+    customTitleLine('Rename buried deep in the file'),
+    longTurn,
+  ], async ({ workspacePath, transcriptPath }) => {
+    sessionsDb.createSession('test-session-1', 'claude', workspacePath, 'Stored name');
+
+    const result = await new ClaudeSessionSynchronizer().synchronizeFile(transcriptPath);
+
+    assert.equal(sessionsDb.getSessionById(result!)?.custom_name, 'Stored name');
+  });
+});
+
+test('the first synchronize picks up a rename made while the app was not running', { concurrency: false }, async () => {
+  await withRenamedTranscript('offline-rename', [
+    customTitleLine('Renamed while the app was down'),
+  ], async ({ workspacePath, transcriptPath }) => {
+    sessionsDb.createSession('test-session-1', 'claude', workspacePath, 'Stale name', undefined, undefined, transcriptPath);
+
+    // A scan boundary in the future: no transcript counts as new, as on a restart with nothing created meanwhile.
+    await new ClaudeSessionSynchronizer().synchronize(new Date(Date.now() + 60_000));
+
+    assert.equal(sessionsDb.getSessionById('test-session-1')?.custom_name, 'Renamed while the app was down');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Edge cases
 // ---------------------------------------------------------------------------
