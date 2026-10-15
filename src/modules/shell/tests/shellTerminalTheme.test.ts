@@ -28,6 +28,7 @@ type FakeTerminal = {
   options: {
     theme?: ITheme;
     minimumContrastRatio?: number;
+    fontFamily?: string;
   };
   disposed: boolean;
 };
@@ -211,6 +212,60 @@ test('a terminal opened in dark mode keeps the existing dark palette', () => {
   assert.equal(terminals.length, 1);
   assert.equal(terminals[0].options.theme?.background, '#1e1e1e');
   assert.equal(terminals[0].options.minimumContrastRatio, 1);
+});
+
+/** Puts a FontFaceSet on the jsdom document whose font is still loading; returns how to finish the load. */
+function stubLoadingFonts() {
+  let settleLoad: (outcome: 'loaded' | 'failed') => void = () => undefined;
+  const fonts = {
+    check: () => false,
+    load: () =>
+      new Promise((resolve, reject) => {
+        settleLoad = (outcome) => (outcome === 'loaded' ? resolve([]) : reject(new Error('network down')));
+      }),
+  };
+  Object.defineProperty(document, 'fonts', { configurable: true, value: fonts });
+  return { settle: (outcome: 'loaded' | 'failed') => settleLoad(outcome) };
+}
+
+test('the terminal is drawn in the bundled Lilex font, with the system monospace fonts behind it', () => {
+  renderShellTerminal();
+
+  assert.equal(terminals.length, 1);
+  assert.match(terminals[0].options.fontFamily ?? '', /^"Lilex Variable", "Cascadia Mono", Consolas, /);
+});
+
+test('a terminal opens only once its font has loaded, so xterm measures its cells in that font', async () => {
+  const fontLoad = stubLoadingFonts();
+  try {
+    renderShellTerminal();
+    assert.equal(terminals.length, 0);
+
+    await act(async () => {
+      fontLoad.settle('loaded');
+    });
+
+    assert.equal(terminals.length, 1);
+  } finally {
+    delete (document as { fonts?: unknown }).fonts;
+  }
+});
+
+test('a font that fails to load still opens the terminal in a fallback font', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const fontLoad = stubLoadingFonts();
+  try {
+    renderShellTerminal();
+
+    await act(async () => {
+      fontLoad.settle('failed');
+    });
+
+    assert.equal(terminals.length, 1);
+  } finally {
+    delete (document as { fonts?: unknown }).fonts;
+    warn.mockRestore();
+  }
 });
 
 test('toggling the theme repaints the open terminal without rebuilding it or closing its socket', () => {

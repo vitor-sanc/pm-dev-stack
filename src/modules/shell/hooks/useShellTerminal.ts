@@ -6,6 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import type { ITerminalOptions } from '@xterm/xterm';
+import '@fontsource-variable/lilex';
 
 import { useTheme } from '@/shared/context/ThemeContext';
 import type { MobileTerminalSelectionManager, Project } from '@/shared/types';
@@ -17,10 +18,17 @@ import { ensureXtermFocusStyles } from '@/modules/shell/utils/terminalStyles';
 
 const TERMINAL_RESIZE_DELAY_MS = 50;
 
+// Lilex is Zed's default editor and terminal font; it ships with the app so every
+// machine draws the Shell alike. The old stack named only macOS fonts, so Windows
+// fell through to Courier New. The system fonts after it cover glyphs Lilex lacks.
+const TERMINAL_FONT_FAMILY = '"Lilex Variable", "Cascadia Mono", Consolas, Menlo, Monaco, "Courier New", monospace';
+const TERMINAL_FONT_SIZE = 14;
+const TERMINAL_FONT_QUERY = `${TERMINAL_FONT_SIZE}px "Lilex Variable"`;
+
 const TERMINAL_OPTIONS: ITerminalOptions = {
   cursorBlink: true,
-  fontSize: 14,
-  fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+  fontSize: TERMINAL_FONT_SIZE,
+  fontFamily: TERMINAL_FONT_FAMILY,
   allowProposedApi: true,
   allowTransparency: false,
   convertEol: true,
@@ -157,6 +165,17 @@ const ClipboardAddonCtor = ClipboardAddon as unknown as new (
   provider?: IClipboardProvider,
 ) => ClipboardAddon;
 
+/**
+ * Used to decide whether the terminal can open now. xterm measures its cell
+ * size once, when it opens, so a terminal opened before its font arrives keeps
+ * the fallback font's cell size. Without the FontFaceSet API (jsdom) the font
+ * counts as loaded.
+ */
+function isTerminalFontLoaded(): boolean {
+  const fonts: FontFaceSet | undefined = document.fonts;
+  return !fonts || fonts.check(TERMINAL_FONT_QUERY);
+}
+
 type UseShellTerminalOptions = {
   terminalContainerRef: RefObject<HTMLDivElement>;
   terminalRef: MutableRefObject<Terminal | null>;
@@ -186,6 +205,8 @@ export function useShellTerminal({
 }: UseShellTerminalOptions): UseShellTerminalResult {
   const { isDarkMode } = useTheme();
   const [isInitialized, setIsInitialized] = useState(false);
+  // False while the terminal font loads; the terminal opens once it is true, also when the load fails.
+  const [isTerminalFontReady, setIsTerminalFontReady] = useState(isTerminalFontLoaded);
   // Read through a ref when the terminal is created: with the theme in that
   // effect's dependencies, a toggle would dispose the terminal and close the
   // socket instead of repainting the session that is running.
@@ -198,6 +219,28 @@ export function useShellTerminal({
   useEffect(() => {
     ensureXtermFocusStyles();
   }, []);
+
+  useEffect(() => {
+    if (isTerminalFontReady) {
+      return;
+    }
+
+    let isCancelled = false;
+    document.fonts
+      .load(TERMINAL_FONT_QUERY)
+      .catch((error: unknown) => {
+        console.warn('[Shell] TerminalFontLoadFailed', error);
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsTerminalFontReady(true);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isTerminalFontReady]);
 
   const clearTerminalScreen = useCallback(() => {
     if (!terminalRef.current) {
@@ -225,7 +268,7 @@ export function useShellTerminal({
 
   useEffect(() => {
     const terminalContainer = terminalContainerRef.current;
-    if (!terminalContainer || !hasSelectedProject || isRestarting || terminalRef.current) {
+    if (!terminalContainer || !hasSelectedProject || isRestarting || !isTerminalFontReady || terminalRef.current) {
       return;
     }
 
@@ -409,6 +452,7 @@ export function useShellTerminal({
     disposeTerminal,
     fitAddonRef,
     isRestarting,
+    isTerminalFontReady,
     hasSelectedProject,
     minimal,
     selectedProjectKey,
